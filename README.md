@@ -1,5 +1,7 @@
 # Helpdesk Operations Lab
 
+[![Tests](https://github.com/Volianwt/helpdesk-operations-lab/actions/workflows/tests.yml/badge.svg)](https://github.com/Volianwt/helpdesk-operations-lab/actions/workflows/tests.yml)
+
 A small, working Tier 1 helpdesk lab built to practise the operating habits behind an internal service desk: clear intake, priority and SLA decisions, asset records, reproducible troubleshooting, knowledge-base use, security escalation, and user follow-up.
 
 The incidents and assets in this repository are simulated. The lab does not claim production administration experience with Microsoft 365, Active Directory, Windows Server, Yealink phones, or other named platforms.
