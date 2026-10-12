@@ -1,40 +1,61 @@
-# Design and Controls
+# Design and controls
 
-## Operational problem
+I wanted a small support workflow where each queue item has enough context for the next person to pick it up: what is affected, why it has its priority, who owns the next action, and what has already been tried. The implementation keeps those records together and produces reports from the same database.
 
-An internal helpdesk has to do more than fix isolated technical symptoms. It needs consistent intake, a defensible priority, visible SLA risk, safe diagnostic boundaries, useful notes for the next technician, accurate device and licence records, and confirmation that the user can work again.
+## Scope
 
-This lab models those responsibilities without pretending to be a production IT service-management platform.
+This is a local lab with synthetic records. The named products describe support scenarios; the application does not administer Microsoft 365, Active Directory, endpoints, or network infrastructure.
 
-## Core decisions
-
-### Priority is derived, not guessed
-
-Impact and urgency are recorded separately and mapped to P1-P4. The mapping is intentionally simple enough for a Tier 1 technician to explain. A security category is escalated independently because a low apparent business impact does not make a suspected compromise safe to close locally.
-
-### SLA state is calculated from the ticket record
-
-The dashboard calculates due time from `opened_at` and the priority policy. Tickets are ordered by overdue, at-risk, and on-track state. This keeps attention on user impact and commitments instead of ticket age alone.
-
-### Resolution requires evidence
-
-The resolve command rejects empty or meaningless notes. A successful resolution updates the ticket and adds a timestamped event; the original request remains available for later review. A real service desk would also record technician identity and user confirmation through authenticated accounts.
-
-### Tier 1 boundaries are explicit
-
-The knowledge-base articles favour read-only inspection, known-good tests, approved request paths, and early escalation. They do not instruct a technician to grant access, disable security controls, erase evidence, forward malicious content, or make unapproved infrastructure changes.
-
-### Operational records are portable
-
-SQLite keeps the project easy to run and inspect. CSV exports make the ticket, asset, licence, and audit-event records reviewable without installing the application. A production system would use authentication, role-based access, encryption, retention policies, backups, and API integrations.
+The command line is the write interface. The HTML dashboard, Markdown review, and CSV files are exported artifacts. Opening a dashboard neither queries the database nor updates it.
 
 ## Data model
 
-- `tickets`: request, category, impact, urgency, priority, status, asset, and resolution notes
-- `ticket_events`: timestamped creation and resolution history
-- `assets`: tag, type, platform, lifecycle state, and assignment
-- `software_licenses`: owned seats, assigned seats, and renewal date
+| Table | Purpose |
+| --- | --- |
+| `tickets` | Request details, impact, urgency, priority, status, asset reference, owner, follow-up deadline and notes, and resolution notes. |
+| `ticket_events` | Timestamped creation, update, progress-note, and resolution events. |
+| `assets` | Device type, platform, lifecycle status, and assignment. |
+| `software_licenses` | Seats owned, seats assigned, and renewal date. |
 
-## Validation strategy
+SQLite makes the relationships inspectable without a separate database service. Initialization creates missing tables and adds new columns while preserving existing records. A reset is an explicit destructive operation that recreates the selected database from the sample data.
 
-The automated tests verify the priority matrix, seed integrity, resolved-ticket filtering, SLA queue order, knowledge-base search, security escalation, resolution/audit consistency, operational metrics, and CSV generation. GitHub Actions runs the same suite on every push and pull request.
+## Priority and attention
+
+Impact and urgency each use `low`, `medium`, or `high`. Their numeric scores are added to derive priority:
+
+| Combined score | Priority | Target from opening time |
+| --- | --- | --- |
+| 6 | P1 | 1 hour |
+| 5 | P2 | 4 hours |
+| 3–4 | P3 | 24 hours |
+| 2 | P4 | 72 hours |
+
+These are lab targets measured in elapsed hours. There are no working-hour calendars, holidays, response-time targets, or paused clocks.
+
+An active ticket is overdue at its due time. Before that deadline, it is at risk when the remaining time is no more than the greater of one hour or 25% of its target. Security and P1 impact can require escalation independently of the SLA calculation. A follow-up deadline records the next agreed action and is separate from the SLA due time.
+
+## Changes and event history
+
+Updates record ownership, status, and follow-up changes alongside an event. Progress notes add context without resolving the ticket. Resolution records the outcome and changes the status in the same database transaction as its event.
+
+The note-length check prevents empty or very short resolution entries; it cannot determine whether a reported fix actually worked. In the walkthrough I record the test performed and the user's confirmation so the result can be understood from the ticket history.
+
+The event log is useful for reviewing this local workflow. It does not identify an authenticated operator and is not tamper-proof: anyone with access to the database file can change its contents.
+
+## Reporting semantics
+
+The dashboard combines a searchable ticket queue, operational totals, attention filters, and a detail view with ticket history. The weekly Markdown export groups activity over the seven-day window ending at the review time and includes the current queue for follow-up. Resolution counts use recorded resolution events; the two sample tickets already marked resolved have no invented resolution timestamps and therefore do not count as resolutions in the reporting window. The report does not calculate historical SLA attainment.
+
+All report formats read the current database records. `--as-of` supplies a reference time for SLA calculations and the reporting window; it is **not** a historical snapshot query. For example, a ticket resolved today remains resolved when a report is generated with yesterday's `--as-of` value. Historical queue reconstruction would require replaying events or storing snapshots, neither of which this lab implements.
+
+The sample review time is `2026-08-14T16:00:00`. Using that time makes the seeded queue reproducible. The checked-in reports are generated by `scripts/build_demo.py`, which adds four scripted events to a temporary database before exporting. The working database is not used or changed. A review time earlier than any ticket's opening time is rejected. Dates and times are local and timezone-naive; offsets and timezone suffixes are not supported. Regenerate exported reports after any change to the records.
+
+## Troubleshooting boundaries
+
+The runbooks start with inspection, reproducible checks, and known-good tests. Access grants, suspected compromise, destructive cleanup, and infrastructure changes are handed to the appropriate authorized owner. The Windows diagnostic script gathers system information and writes a report; the Python application does not run it automatically.
+
+## Validation
+
+The automated suite covers the priority matrix, seed integrity, initialization, SLA calculations, ticket changes and event history, reporting, knowledge-base search, and CSV exports. The same suite runs through GitHub Actions.
+
+The browser report also needs a visual check: filters should leave understandable empty states, selecting a ticket should show its details, and long notes should remain readable. The PowerShell collector requires a separate Windows lab check; it is not executed by the cross-platform tests.

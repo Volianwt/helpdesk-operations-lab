@@ -16,6 +16,18 @@ DB_PATH = DATA_DIR / "helpdesk_lab.db"
 KB_DIR = ROOT / "kb"
 
 SLA_HOURS = {"P1": 1, "P2": 4, "P3": 24, "P4": 72}
+ACTIVE_STATUSES = ("Open", "In Progress", "Escalated")
+DEMO_TIME = datetime(2026, 8, 14, 16)
+
+# These roles and actions belong to the synthetic scenario, not a real team.
+SEED_FOLLOW_UP = {
+    "INC-1001": ("Service Desk", "2026-08-14T15:00:00", "Check the mapped-drive test result with Finance."),
+    "INC-1002": ("Service Desk", "2026-08-14T16:30:00", "Confirm the approved headset works in a Teams test call."),
+    "INC-1003": ("Security", "2026-08-14T16:00:00", "Request the security owner’s acknowledgement of the escalation."),
+    "REQ-1004": ("IT Operations", "2026-08-14T15:30:00", "Confirm manager approval and the remaining onboarding tasks."),
+    "INC-1007": ("Event Support", "2026-08-14T16:10:00", "Test the spare HDMI cable before the room handover."),
+    "INC-1009": ("Service Desk", "2026-08-14T17:00:00", "Record the known-good network test before escalation."),
+}
 
 ASSETS = [
     ("EVG-LT-014", "Laptop", "Windows 11", "Assigned", "Finance"),
@@ -64,6 +76,7 @@ def calculate_priority(impact: str, urgency: str) -> str:
 def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
     connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
     return connection
 
 
@@ -110,39 +123,125 @@ def initialize(db_path: Path = DB_PATH, reset: bool = False) -> None:
             );
             """
         )
-        connection.executemany(
-            "INSERT OR REPLACE INTO assets VALUES (?, ?, ?, ?, ?)", ASSETS
-        )
-        ticket_rows = [row[:5] + (calculate_priority(row[3], row[4]),) + row[5:] + ("",) for row in TICKETS]
-        connection.executemany(
-            "INSERT OR REPLACE INTO tickets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ticket_rows,
-        )
-        connection.executemany(
-            "INSERT OR REPLACE INTO software_licenses VALUES (?, ?, ?, ?)",
-            [
-                ("Microsoft 365", 85, 79, "2027-01-31"),
-                ("Adobe Acrobat", 20, 18, "2026-12-15"),
-                ("Remote Support", 8, 7, "2026-11-30"),
-            ],
-        )
-        for ticket in TICKETS:
-            connection.execute(
-                """
-                INSERT INTO ticket_events (ticket_id, event_type, details, created_at)
-                SELECT ?, 'CREATED', 'Seeded simulated incident', ?
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM ticket_events WHERE ticket_id = ? AND event_type = 'CREATED'
-                )
-                """,
-                (ticket[0], ticket[5], ticket[0]),
+        # Additive migration also accepts databases created by the first version.
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(tickets)")}
+        for name in ("owner", "follow_up_due_at", "follow_up_notes"):
+            if name not in columns:
+                connection.execute(f"ALTER TABLE tickets ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_events_ticket_time ON ticket_events(ticket_id, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_events_time ON ticket_events(created_at)")
+        connection.executemany("INSERT OR IGNORE INTO assets VALUES (?, ?, ?, ?, ?)", ASSETS)
+        for row in TICKETS:
+            metadata = SEED_FOLLOW_UP.get(row[0], ("", "", ""))
+            values = row[:5] + (calculate_priority(row[3], row[4]),) + row[5:] + ("",) + metadata
+            cursor = connection.execute(
+                """INSERT OR IGNORE INTO tickets
+                (ticket_id, summary, category, impact, urgency, priority, opened_at,
+                 status, asset_tag, resolution_notes, owner, follow_up_due_at, follow_up_notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", values,
             )
+            if cursor.rowcount:
+                connection.execute(
+                    "INSERT INTO ticket_events (ticket_id, event_type, details, created_at) VALUES (?, 'CREATED', ?, ?)",
+                    (row[0], "Synthetic scenario created; initial status: " + row[6], row[5]),
+                )
+        connection.executemany(
+            "INSERT OR IGNORE INTO software_licenses VALUES (?, ?, ?, ?)",
+            [("Microsoft 365", 85, 79, "2027-01-31"),
+             ("Adobe Acrobat", 20, 18, "2026-12-15"),
+             ("Remote Support", 8, 7, "2026-11-30")],
+        )
+
+
+def local_time(value: str | datetime) -> datetime:
+    """Use one explicit clock convention; reject offset-aware timestamps."""
+    parsed = datetime.fromisoformat(value) if isinstance(value, str) else value
+    if parsed.tzinfo is not None:
+        raise ValueError("use a local date and time without a timezone offset (YYYY-MM-DDTHH:MM:SS)")
+    return parsed
+
+
+def clean_text(value: str, label: str, minimum: int = 1, maximum: int = 2000) -> str:
+    value = " ".join(value.split())
+    if not minimum <= len(value) <= maximum:
+        raise ValueError(f"{label} must contain {minimum}–{maximum} characters")
+    return value
+
+
+def editable_ticket(connection: sqlite3.Connection, ticket_id: str, at: datetime) -> sqlite3.Row:
+    ticket = connection.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
+    if ticket is None:
+        raise KeyError(f"unknown ticket: {ticket_id}")
+    if ticket["status"] in {"Resolved", "Closed"}:
+        raise ValueError(f"ticket {ticket_id} is already {ticket['status'].lower()}")
+    latest = connection.execute(
+        "SELECT MAX(created_at) FROM ticket_events WHERE ticket_id = ?", (ticket_id,)
+    ).fetchone()[0]
+    if at < local_time(ticket["opened_at"]) or (latest and at < local_time(latest)):
+        raise ValueError("the update time cannot precede the ticket's latest recorded event")
+    return ticket
+
+
+def record_event(connection: sqlite3.Connection, ticket_id: str, kind: str, details: str, at: datetime) -> None:
+    connection.execute(
+        "INSERT INTO ticket_events (ticket_id, event_type, details, created_at) VALUES (?, ?, ?, ?)",
+        (ticket_id, kind, details, at.isoformat(timespec="seconds")),
+    )
+
+
+def update_ticket(
+    ticket_id: str, db_path: Path = DB_PATH, *, owner: str | None = None,
+    status: str | None = None, follow_up_due: datetime | None = None,
+    notes: str | None = None, clear_follow_up: bool = False, at: datetime | None = None,
+) -> None:
+    """Change a ticket and write the before/after values in the same transaction."""
+    at = local_time(at or datetime.now())
+    if status is not None and status not in ACTIVE_STATUSES:
+        raise ValueError("status must be Open, In Progress, or Escalated; use resolve to close work")
+    if clear_follow_up and (follow_up_due is not None or notes is not None):
+        raise ValueError("clear-follow-up cannot be combined with a new due time or action")
+    if (follow_up_due is None) != (notes is None):
+        raise ValueError("a follow-up requires both a due time and an action note")
+    changes = {}
+    if owner is not None:
+        changes["owner"] = clean_text(owner, "owner", maximum=100) if owner.strip() else ""
+    if status is not None:
+        changes["status"] = status
+    if follow_up_due is not None:
+        due = local_time(follow_up_due)
+        if due < at:
+            raise ValueError("follow-up due time cannot precede the update time")
+        changes.update(follow_up_due_at=due.isoformat(timespec="seconds"),
+                       follow_up_notes=clean_text(notes, "follow-up action", minimum=12))
+    if clear_follow_up:
+        changes.update(follow_up_due_at="", follow_up_notes="")
+    if not changes:
+        raise ValueError("provide an owner, status, or follow-up to update")
+    with connect(db_path) as connection:
+        ticket = editable_ticket(connection, ticket_id, at)
+        changes = {key: value for key, value in changes.items() if ticket[key] != value}
+        if not changes:
+            raise ValueError("the ticket already has those values")
+        query = ", ".join(f"{field} = ?" for field in changes)
+        connection.execute(f"UPDATE tickets SET {query} WHERE ticket_id = ?", (*changes.values(), ticket_id))
+        details = "; ".join(f"{key.replace('_', ' ').capitalize()}: {ticket[key] or '(none)'} → {value or '(none)'}"
+                            for key, value in changes.items())
+        record_event(connection, ticket_id, "UPDATED", details, at)
+
+
+def add_note(ticket_id: str, notes: str, db_path: Path = DB_PATH, at: datetime | None = None) -> None:
+    notes = clean_text(notes, "note", minimum=12)
+    at = local_time(at or datetime.now())
+    with connect(db_path) as connection:
+        editable_ticket(connection, ticket_id, at)
+        record_event(connection, ticket_id, "NOTE", notes, at)
 
 
 def sla_state(priority: str, opened_at: datetime, as_of: datetime) -> tuple[str, datetime]:
+    opened_at, as_of = local_time(opened_at), local_time(as_of)
     due_at = opened_at + timedelta(hours=SLA_HOURS[priority])
     remaining = due_at - as_of
-    if remaining.total_seconds() < 0:
+    if remaining.total_seconds() <= 0:
         return "OVERDUE", due_at
     if remaining <= timedelta(hours=max(1, SLA_HOURS[priority] * 0.25)):
         return "AT RISK", due_at
@@ -150,8 +249,11 @@ def sla_state(priority: str, opened_at: datetime, as_of: datetime) -> tuple[str,
 
 
 def dashboard(db_path: Path = DB_PATH, as_of: datetime | None = None) -> list[dict[str, str]]:
-    as_of = as_of or datetime.now()
+    as_of = local_time(as_of or datetime.now())
     with connect(db_path) as connection:
+        opened = connection.execute("SELECT opened_at FROM tickets").fetchall()
+        if any(local_time(row["opened_at"]) > as_of for row in opened):
+            raise ValueError("evaluation time cannot precede a recorded ticket opening time")
         rows = connection.execute(
             "SELECT * FROM tickets WHERE status NOT IN ('Resolved', 'Closed') ORDER BY opened_at"
         ).fetchall()
@@ -167,6 +269,11 @@ def dashboard(db_path: Path = DB_PATH, as_of: datetime | None = None) -> list[di
                 "due_at": due_at.isoformat(timespec="minutes"),
                 "escalation": escalation,
                 "summary": row["summary"],
+                "status": row["status"],
+                "owner": row["owner"],
+                "follow_up_due_at": row["follow_up_due_at"],
+                "follow_up_notes": row["follow_up_notes"],
+                "follow_up_state": ("DUE" if local_time(row["follow_up_due_at"]) <= as_of else "SCHEDULED") if row["follow_up_due_at"] else "NOT SET",
             }
         )
     return sorted(result, key=lambda item: ({"OVERDUE": 0, "AT RISK": 1, "ON TRACK": 2}[item["state"]], item["due_at"]))
@@ -192,26 +299,18 @@ def resolve_ticket(
     resolved_at: datetime | None = None,
 ) -> None:
     """Resolve one ticket and record an auditable event."""
-    clean_notes = " ".join(resolution_notes.split())
-    if len(clean_notes) < 12:
-        raise ValueError("resolution notes must explain the verified outcome")
-    resolved_at = resolved_at or datetime.now()
+    clean_notes = clean_text(resolution_notes, "resolution notes", minimum=12)
+    resolved_at = local_time(resolved_at or datetime.now())
     with connect(db_path) as connection:
-        ticket = connection.execute(
-            "SELECT status FROM tickets WHERE ticket_id = ?", (ticket_id,)
-        ).fetchone()
-        if ticket is None:
-            raise KeyError(f"unknown ticket: {ticket_id}")
-        if ticket["status"] in {"Resolved", "Closed"}:
-            raise ValueError(f"ticket {ticket_id} is already {ticket['status'].lower()}")
+        ticket = editable_ticket(connection, ticket_id, resolved_at)
         connection.execute(
-            "UPDATE tickets SET status = 'Resolved', resolution_notes = ? WHERE ticket_id = ?",
+            "UPDATE tickets SET status = 'Resolved', resolution_notes = ?, follow_up_due_at = '', follow_up_notes = '' WHERE ticket_id = ?",
             (clean_notes, ticket_id),
         )
-        connection.execute(
-            "INSERT INTO ticket_events (ticket_id, event_type, details, created_at) VALUES (?, 'RESOLVED', ?, ?)",
-            (ticket_id, clean_notes, resolved_at.isoformat(timespec="seconds")),
-        )
+        details = clean_notes
+        if ticket["follow_up_due_at"]:
+            details += f" [Cleared follow-up: {ticket['follow_up_due_at']} — {ticket['follow_up_notes']}]"
+        record_event(connection, ticket_id, "RESOLVED", details, resolved_at)
 
 
 def operational_metrics(db_path: Path = DB_PATH, as_of: datetime | None = None) -> dict[str, int]:
@@ -233,13 +332,15 @@ def operational_metrics(db_path: Path = DB_PATH, as_of: datetime | None = None) 
         "overdue_tickets": sum(item["state"] == "OVERDUE" for item in queue),
         "at_risk_tickets": sum(item["state"] == "AT RISK" for item in queue),
         "escalations": sum(bool(item["escalation"]) for item in queue),
+        "unassigned_tickets": sum(not item["owner"] for item in queue),
+        "follow_ups_due": sum(item["follow_up_state"] == "DUE" for item in queue),
         "assets_in_repair": repair_assets,
-        "unassigned_license_seats": license_headroom,
+        "unassigned_license_seats": license_headroom or 0,
     }
 
 
 def export_operational_data(output_dir: Path, db_path: Path = DB_PATH) -> list[Path]:
-    """Export recruiter-readable operational records without external packages."""
+    """Export operational records without external packages."""
     output_dir.mkdir(parents=True, exist_ok=True)
     exports = {
         "tickets.csv": "SELECT * FROM tickets ORDER BY ticket_id",
@@ -250,14 +351,22 @@ def export_operational_data(output_dir: Path, db_path: Path = DB_PATH) -> list[P
     written = []
     with connect(db_path) as connection:
         for filename, query in exports.items():
-            rows = connection.execute(query).fetchall()
+            cursor = connection.execute(query)
+            rows = cursor.fetchall()
             path = output_dir / filename
             with path.open("w", newline="", encoding="utf-8") as handle:
                 writer = csv.writer(handle)
-                writer.writerow(rows[0].keys() if rows else [])
-                writer.writerows(tuple(row) for row in rows)
+                writer.writerow(column[0] for column in cursor.description)
+                writer.writerows(tuple(csv_safe(value) for value in row) for row in rows)
             written.append(path)
     return written
+
+
+def csv_safe(value):
+    # Spreadsheet software may interpret user-entered text as a formula.
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
 
 
 def search_kb(query: str, kb_dir: Path = KB_DIR) -> list[tuple[str, str]]:
@@ -275,7 +384,7 @@ def search_kb(query: str, kb_dir: Path = KB_DIR) -> list[tuple[str, str]]:
 
 
 def print_rows(rows: list[dict[str, str]], fields: list[str]) -> None:
-    widths = {field: max(len(field), *(len(str(row[field])) for row in rows)) for field in fields}
+    widths = {field: max([len(field)] + [len(str(row[field])) for row in rows]) for field in fields}
     print("  ".join(field.upper().ljust(widths[field]) for field in fields))
     print("  ".join("-" * widths[field] for field in fields))
     for row in rows:
@@ -284,58 +393,74 @@ def print_rows(rows: list[dict[str, str]], fields: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    init_parser = subparsers.add_parser("init", help="create and seed the lab database")
-    init_parser.add_argument("--reset", action="store_true")
-    dashboard_parser = subparsers.add_parser("dashboard", help="show the active SLA queue")
-    dashboard_parser.add_argument("--as-of", type=datetime.fromisoformat)
-    subparsers.add_parser("tickets", help="list all tickets")
-    subparsers.add_parser("assets", help="list all assets")
-    subparsers.add_parser("metrics", help="show queue and inventory metrics")
-    kb_parser = subparsers.add_parser("kb", help="search knowledge-base articles")
+    parser.add_argument("--db", type=Path, default=DB_PATH, help="database path (default: data/helpdesk_lab.db)")
+    commands = parser.add_subparsers(dest="command", required=True)
+    init_parser = commands.add_parser("init", help="create, migrate, and seed without overwriting records")
+    init_parser.add_argument("--reset", action="store_true", help="DELETE this database and reseed it")
+    for name, help_text in (("dashboard", "show the active SLA queue"), ("metrics", "show queue and inventory metrics"),
+                            ("report", "write a standalone interactive HTML snapshot"), ("weekly", "write a seven-day Markdown summary")):
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument("--as-of", type=local_time, help="local evaluation time, e.g. 2026-08-14T16:00:00")
+        if name in ("report", "weekly"):
+            command.add_argument("--output", type=Path, default=ROOT / "reports" / ("dashboard.html" if name == "report" else "weekly-summary.md"))
+    commands.add_parser("tickets", help="list all tickets")
+    commands.add_parser("assets", help="list all assets")
+    kb_parser = commands.add_parser("kb", help="search knowledge-base articles")
     kb_parser.add_argument("query")
-    resolve_parser = subparsers.add_parser("resolve", help="resolve a ticket with an audit event")
-    resolve_parser.add_argument("ticket_id")
-    resolve_parser.add_argument("--notes", required=True)
-    export_parser = subparsers.add_parser("export", help="export tickets, assets, licences, and events to CSV")
+    for name, help_text in (("resolve", "resolve a ticket with an audit event"), ("note", "append a progress note"), ("update", "set ownership, status, and follow-up")):
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument("ticket_id")
+        command.add_argument("--at", type=local_time, help="local event time (defaults to now)")
+        command.add_argument("--notes", required=name != "update")
+        if name == "update":
+            command.add_argument("--owner", help="responsible person or team; empty string removes the assignment")
+            command.add_argument("--status", choices=ACTIVE_STATUSES)
+            command.add_argument("--follow-up-due", type=local_time)
+            command.add_argument("--clear-follow-up", action="store_true")
+    export_parser = commands.add_parser("export", help="export tickets, assets, licences, and events to CSV")
     export_parser.add_argument("--output-dir", type=Path, default=ROOT / "exports")
     args = parser.parse_args()
-
-    if args.command == "init":
-        initialize(reset=args.reset)
-        print(f"Initialized {DB_PATH} with {len(TICKETS)} tickets and {len(ASSETS)} assets.")
-        return
-
-    if not DB_PATH.exists():
-        initialize()
-
-    if args.command == "dashboard":
-        print_rows(dashboard(as_of=args.as_of), ["ticket_id", "priority", "state", "due_at", "escalation", "summary"])
-    elif args.command == "tickets":
-        with connect() as connection:
-            rows = [dict(row) for row in connection.execute(
-                "SELECT ticket_id, priority, status, category, summary FROM tickets ORDER BY ticket_id"
-            )]
-        print_rows(rows, ["ticket_id", "priority", "status", "category", "summary"])
-    elif args.command == "assets":
-        with connect() as connection:
-            rows = [dict(row) for row in connection.execute("SELECT * FROM assets ORDER BY asset_tag")]
-        print_rows(rows, ["asset_tag", "asset_type", "platform", "status", "assignment"])
-    elif args.command == "metrics":
-        for name, value in operational_metrics().items():
-            print(f"{name}: {value}")
-    elif args.command == "kb":
-        results = search_kb(args.query)
-        if not results:
-            print("No matching knowledge-base articles.")
-        for title, filename in results:
-            print(f"{title} ({filename})")
-    elif args.command == "resolve":
-        resolve_ticket(args.ticket_id, args.notes)
-        print(f"Resolved {args.ticket_id} and recorded an audit event.")
-    elif args.command == "export":
-        for path in export_operational_data(args.output_dir):
-            print(path)
+    try:
+        initialize(args.db, reset=args.command == "init" and args.reset)
+        if args.command == "init":
+            print(f"Database ready: {args.db}")
+        elif args.command == "dashboard":
+            print_rows(dashboard(args.db, args.as_of), ["ticket_id", "priority", "state", "due_at", "owner", "follow_up_state", "summary"])
+        elif args.command in {"tickets", "assets"}:
+            fields = ["ticket_id", "priority", "status", "owner", "category", "summary"] if args.command == "tickets" else ["asset_tag", "asset_type", "platform", "status", "assignment"]
+            with connect(args.db) as connection:
+                rows = [dict(row) for row in connection.execute(f"SELECT * FROM {args.command} ORDER BY {fields[0]}")]
+            print_rows(rows, fields)
+        elif args.command == "metrics":
+            for name, value in operational_metrics(args.db, args.as_of).items():
+                print(f"{name}: {value}")
+        elif args.command == "kb":
+            results = search_kb(args.query)
+            if not results:
+                print("No matching knowledge-base articles.")
+            for title, filename in results:
+                print(f"{title} ({filename})")
+        elif args.command == "resolve":
+            resolve_ticket(args.ticket_id, args.notes, args.db, args.at)
+            print(f"Resolved {args.ticket_id} and recorded an audit event.")
+        elif args.command == "note":
+            add_note(args.ticket_id, args.notes, args.db, args.at)
+            print(f"Added a progress note to {args.ticket_id}.")
+        elif args.command == "update":
+            update_ticket(args.ticket_id, args.db, owner=args.owner, status=args.status,
+                          follow_up_due=args.follow_up_due, notes=args.notes,
+                          clear_follow_up=args.clear_follow_up, at=args.at)
+            print(f"Updated {args.ticket_id} and recorded the changes.")
+        elif args.command == "export":
+            for path in export_operational_data(args.output_dir, args.db):
+                print(path)
+        elif args.command in {"report", "weekly"}:
+            from reporting import write_dashboard, write_weekly_summary
+            writer = write_dashboard if args.command == "report" else write_weekly_summary
+            writer(args.output, args.db, args.as_of)
+            print(args.output)
+    except (ValueError, KeyError, sqlite3.Error, OSError) as error:
+        parser.exit(2, f"Error: {error}\n")
 
 
 if __name__ == "__main__":
