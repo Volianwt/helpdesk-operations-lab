@@ -1,0 +1,1414 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="A local Helpdesk Operations Lab report with ticket ownership, SLA targets, follow-ups and an audit trail. Synthetic scenario data."
+    />
+    <title>Operations overview · Helpdesk Lab</title>
+    <style>
+      :root {
+        --ink: #182d39;
+        --muted: #647782;
+        --line: #dce4e7;
+        --paper: #f3f6f6;
+        --nav: #142d38;
+        --green: #176c57;
+        --green-bg: #e7f3ed;
+        --amber: #936018;
+        --amber-bg: #fff2da;
+        --red: #a64138;
+        --red-bg: #fbece8;
+        --white: #fff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          14px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      a:focus-visible {
+        outline: 3px solid #64a89e;
+        outline-offset: 3px;
+      }
+      button {
+        color: inherit;
+      }
+      a {
+        color: var(--green);
+      }
+      .app {
+        display: grid;
+        grid-template-columns: 196px 1fr;
+        min-height: 100vh;
+      }
+      .sidebar {
+        background: var(--nav);
+        color: #e6eeef;
+        padding: 32px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 44px;
+      }
+      .brand {
+        display: flex;
+        gap: 11px;
+        align-items: center;
+        font-size: 15px;
+        font-weight: 650;
+        line-height: 1.25;
+      }
+      .brandmark {
+        width: 35px;
+        height: 35px;
+        display: grid;
+        place-items: center;
+        background: #335c66;
+        border-radius: 9px;
+        font-size: 18px;
+        color: #d9f0db;
+      }
+      .brand small {
+        display: block;
+        color: #96b0b8;
+        font-size: 11px;
+        font-weight: 400;
+        margin-top: 5px;
+      }
+      .nav-label,
+      .eyebrow {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .nav-label {
+        color: #8ba5ae;
+        margin-bottom: 12px;
+      }
+      .nav-button {
+        width: 100%;
+        display: flex;
+        gap: 12px;
+        text-align: left;
+        align-items: center;
+        background: transparent;
+        color: #bdcdd2;
+        border: 0;
+        border-radius: 7px;
+        padding: 11px 12px;
+        margin: 4px 0;
+      }
+      .nav-button[aria-pressed="true"] {
+        background: #2b4852;
+        color: #fff;
+      }
+      .nav-icon {
+        font-size: 17px;
+        width: 18px;
+        text-align: center;
+      }
+      .side-note {
+        margin-top: auto;
+        padding-top: 22px;
+        border-top: 1px solid #35505a;
+        font-size: 11px;
+        color: #9db2bb;
+        line-height: 1.7;
+      }
+      .side-note strong {
+        display: block;
+        color: #dbe7ea;
+        font-size: 12px;
+        font-weight: 500;
+        margin-bottom: 7px;
+      }
+      .main {
+        padding: 32px 38px 24px;
+        max-width: 1700px;
+        width: 100%;
+        margin: auto;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: center;
+        margin-bottom: 27px;
+      }
+      .eyebrow {
+        color: var(--green);
+        margin-bottom: 5px;
+      }
+      .header h1 {
+        font-size: 30px;
+        font-weight: 630;
+        letter-spacing: -1px;
+        margin: 0 0 4px;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0;
+      }
+      .header-actions {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+      }
+      .button {
+        background: white;
+        border: 1px solid #ced9dd;
+        border-radius: 6px;
+        padding: 9px 13px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .button.primary {
+        background: var(--green);
+        border-color: var(--green);
+        color: white;
+      }
+      .button:hover {
+        filter: brightness(0.97);
+      }
+      .snapshot-bar {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--muted);
+        font-size: 11px;
+        margin-bottom: 18px;
+      }
+      .snapshot-dot {
+        height: 6px;
+        width: 6px;
+        border-radius: 50%;
+        background: #579380;
+      }
+      .snapshot-bar strong {
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 24px;
+      }
+      .metric {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 18px 20px;
+        position: relative;
+      }
+      .metric-label {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .metric-value {
+        font-size: 31px;
+        font-weight: 600;
+        letter-spacing: -1px;
+        line-height: 1.2;
+        margin: 7px 0;
+      }
+      .metric-help {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .metric-dot {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #6b8b99;
+      }
+      .metric.red .metric-value {
+        color: var(--red);
+      }
+      .metric.red .metric-dot {
+        background: #c37065;
+      }
+      .metric.amber .metric-value {
+        color: var(--amber);
+      }
+      .metric.amber .metric-dot {
+        background: #c39c51;
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(420px, 1.75fr) minmax(300px, 1fr);
+        gap: 18px;
+        align-items: start;
+      }
+      .panel {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        overflow: hidden;
+      }
+      .panel-header {
+        padding: 20px 20px 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .panel-header h2 {
+        font-size: 16px;
+        letter-spacing: -0.2px;
+        margin: 0;
+        font-weight: 620;
+      }
+      .count {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .filter-tabs {
+        display: flex;
+        padding: 0 20px;
+        gap: 20px;
+        border-bottom: 1px solid var(--line);
+        overflow: auto;
+      }
+      .filter-tab {
+        border: 0;
+        border-bottom: 2px solid transparent;
+        background: none;
+        padding: 10px 0;
+        font-size: 11px;
+        white-space: nowrap;
+        color: var(--muted);
+      }
+      .filter-tab.active {
+        border-bottom-color: var(--green);
+        color: var(--green);
+        font-weight: 650;
+      }
+      .toolbar {
+        display: flex;
+        padding: 15px 18px;
+        gap: 8px;
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+      }
+      .search {
+        flex: 1;
+        min-width: 130px;
+        background: #f8fafa;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 8px 10px;
+        font-size: 11px;
+      }
+      .select {
+        max-width: 125px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: white;
+        padding: 7px 8px;
+        font-size: 11px;
+      }
+      .queue-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+      }
+      .queue-table th {
+        font-size: 9px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 600;
+        padding: 10px 15px;
+        background: #fafcfc;
+        border-bottom: 1px solid var(--line);
+      }
+      .queue-table td {
+        padding: 13px 15px;
+        border-bottom: 1px solid #edf1f3;
+        font-size: 11px;
+        vertical-align: top;
+      }
+      .queue-table tr:last-child td {
+        border-bottom: 0;
+      }
+      .queue-table tbody tr.selected {
+        background: #f0f7f4;
+      }
+      .ticket-link {
+        display: block;
+        border: 0;
+        background: none;
+        padding: 0;
+        text-align: left;
+        width: 100%;
+        font-weight: 620;
+        font-size: 12px;
+        color: var(--ink);
+      }
+      .ticket-link .ticket-id {
+        display: block;
+        font-size: 10px;
+        color: var(--green);
+        margin-bottom: 3px;
+        letter-spacing: 0.03em;
+        font-weight: 600;
+      }
+      .ticket-link:hover {
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      .ticket-caption {
+        font-size: 10px;
+        color: var(--muted);
+        display: block;
+        margin-top: 5px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 3px 7px;
+        border-radius: 4px;
+        font-size: 9px;
+        font-weight: 650;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+        background: #edf2f4;
+        color: #5d7280;
+      }
+      .badge.red {
+        color: var(--red);
+        background: var(--red-bg);
+      }
+      .badge.amber {
+        color: var(--amber);
+        background: var(--amber-bg);
+      }
+      .badge.green {
+        color: var(--green);
+        background: var(--green-bg);
+      }
+      .priority {
+        font-weight: 650;
+        font-size: 10px;
+      }
+      .quiet {
+        color: var(--muted);
+      }
+      .owner-line {
+        font-size: 10px;
+        line-height: 1.6;
+      }
+      .empty {
+        padding: 35px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .panel-footer {
+        padding: 12px 20px;
+        font-size: 10px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        background: #fafcfc;
+      }
+      .detail {
+        padding: 20px;
+      }
+      .detail-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .detail-id {
+        font-size: 10px;
+        letter-spacing: 0.05em;
+        color: var(--green);
+        font-weight: 650;
+      }
+      .detail h2 {
+        font-size: 19px;
+        line-height: 1.35;
+        letter-spacing: -0.3px;
+        font-weight: 600;
+        margin: 0 0 18px;
+      }
+      .detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 20px;
+      }
+      .field-label {
+        display: block;
+        text-transform: uppercase;
+        font-size: 9px;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+        margin-bottom: 3px;
+      }
+      .field-value {
+        font-size: 11px;
+      }
+      .detail-section {
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+        margin-top: 18px;
+      }
+      .section-title {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--muted);
+        margin: 0 0 11px;
+      }
+      .action-card {
+        padding: 13px 14px;
+        background: #f3f7f5;
+        border: 1px solid #dce9e1;
+        border-radius: 6px;
+      }
+      .action-card p {
+        font-size: 12px;
+        line-height: 1.6;
+        margin: 6px 0 0;
+      }
+      .action-date {
+        font-size: 10px;
+        color: var(--green);
+        font-weight: 650;
+      }
+      .attention {
+        background: #fff6e7;
+        border-color: #efe2c8;
+      }
+      .attention .action-date {
+        color: var(--amber);
+      }
+      .escalation {
+        font-size: 11px;
+        color: var(--red);
+        margin-top: 13px;
+      }
+      .timeline {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        max-height: 280px;
+        overflow: auto;
+      }
+      .timeline li {
+        border-left: 1px solid #d5e3de;
+        padding: 0 0 16px 15px;
+        margin-left: 3px;
+        position: relative;
+      }
+      .timeline li:last-child {
+        padding-bottom: 0;
+      }
+      .timeline li:before {
+        content: "";
+        position: absolute;
+        left: -4px;
+        top: 5px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #86a99c;
+      }
+      .event-heading {
+        font-size: 10px;
+        font-weight: 600;
+      }
+      .event-time {
+        font-size: 9px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .event-detail {
+        font-size: 11px;
+        color: #526b76;
+        margin-top: 5px;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+      .detail-action {
+        margin-top: 20px;
+        width: 100%;
+        background: white;
+      }
+      .summary-strip {
+        margin-top: 18px;
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #eaf0f1;
+        padding: 16px 19px;
+      }
+      .summary-strip .section-title {
+        margin: 0 0 5px;
+        font-size: 9px;
+      }
+      .summary-strip p {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 0;
+        line-height: 1.6;
+      }
+      .summary-icon {
+        color: #648681;
+        font-size: 20px;
+      }
+      .footer {
+        font-size: 10px;
+        color: #778b93;
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        margin-top: 24px;
+      }
+      .view[hidden] {
+        display: none;
+      }
+      .inventory-grid {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 18px;
+      }
+      .simple-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .simple-table th,
+      .simple-table td {
+        text-align: left;
+        padding: 12px 18px;
+        border-bottom: 1px solid #edf1f3;
+        font-size: 11px;
+      }
+      .simple-table th {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        background: #fafcfc;
+      }
+      .activity-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        padding: 20px;
+      }
+      .activity-card {
+        background: #f5f8f7;
+        padding: 15px;
+        border-radius: 6px;
+      }
+      .activity-card strong {
+        display: block;
+        font-size: 24px;
+        font-weight: 600;
+      }
+      .activity-card span {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .activity-table td:last-child {
+        line-height: 1.65;
+        max-width: 600px;
+        overflow-wrap: anywhere;
+      }
+      #notification {
+        font-size: 10px;
+        color: var(--green);
+        min-height: 16px;
+        margin-top: 6px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      @media (min-width: 1500px) {
+        .main {
+          padding: 38px 44px;
+        }
+        .queue-table td {
+          padding-top: 16px;
+          padding-bottom: 16px;
+        }
+      }
+      @media (max-width: 1180px) {
+        .app {
+          grid-template-columns: 168px 1fr;
+        }
+        .sidebar {
+          padding: 28px 15px;
+        }
+        .main {
+          padding: 28px 24px;
+        }
+        .workspace {
+          grid-template-columns: minmax(340px, 1.5fr) minmax(265px, 1fr);
+        }
+        .queue-table th,
+        .queue-table td {
+          padding-left: 11px;
+          padding-right: 11px;
+        }
+        .header-actions {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .detail {
+          padding: 17px;
+        }
+        .owner-column {
+          display: none;
+        }
+        .inventory-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 900px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          padding: 16px 24px;
+          display: flex;
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: center;
+          gap: 20px;
+        }
+        .sidebar nav {
+          display: flex;
+          gap: 4px;
+        }
+        .nav-label,
+        .side-note,
+        .nav-icon {
+          display: none;
+        }
+        .nav-button {
+          width: auto;
+          font-size: 12px;
+          padding: 9px;
+        }
+        .brand small {
+          display: none;
+        }
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+        .owner-column {
+          display: table-cell;
+        }
+        .main {
+          padding: 24px;
+        }
+        .detail-grid {
+          grid-template-columns: repeat(4, 1fr);
+        }
+        .timeline {
+          max-height: 220px;
+        }
+        .header-actions {
+          flex-direction: row;
+        }
+        .detail h2 {
+          font-size: 21px;
+        }
+      }
+      @media (max-width: 600px) {
+        .sidebar {
+          padding: 14px 16px;
+        }
+        .brand {
+          font-size: 12px;
+        }
+        .brandmark {
+          width: 28px;
+          height: 28px;
+        }
+        .nav-button {
+          font-size: 11px;
+          padding: 7px;
+        }
+        .main {
+          padding: 21px 16px;
+        }
+        .header {
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .header h1 {
+          font-size: 25px;
+        }
+        .header-actions {
+          flex-direction: column;
+        }
+        .header-actions .button {
+          font-size: 10px;
+          padding: 8px;
+        }
+        .metrics {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+        }
+        .metric {
+          padding: 14px;
+        }
+        .metric-value {
+          font-size: 27px;
+        }
+        .metric-dot {
+          right: 14px;
+          top: 17px;
+        }
+        .snapshot-bar {
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+        .detail-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        .queue-table th,
+        .queue-table td {
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+        .owner-column {
+          display: none;
+        }
+        .filter-tabs {
+          gap: 17px;
+          padding: 0 15px;
+        }
+        .select {
+          max-width: 110px;
+        }
+        .footer {
+          flex-direction: column;
+          gap: 5px;
+        }
+        .activity-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .simple-table th,
+        .simple-table td {
+          padding: 10px;
+          font-size: 10px;
+        }
+        .snapshot-description {
+          display: none;
+        }
+        .brand small {
+          display: none;
+        }
+      }
+      @media print {
+        .app {
+          display: block;
+        }
+        .sidebar,
+        .header-actions,
+        .toolbar,
+        .filter-tabs,
+        .detail-action,
+        .footer {
+          display: none;
+        }
+        .main {
+          padding: 0;
+          max-width: none;
+        }
+        .workspace {
+          grid-template-columns: 1.6fr 1fr;
+        }
+        .panel,
+        .metric {
+          break-inside: avoid;
+        }
+        .timeline {
+          max-height: none;
+        }
+        .metric {
+          padding: 12px;
+        }
+        .queue-table td {
+          padding: 8px;
+        }
+        .panel {
+          overflow: visible;
+        }
+        .view[hidden] {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brandmark">H</span>
+          <div>Helpdesk Lab<small>Operations workspace</small></div>
+        </div>
+        <nav aria-label="Report sections">
+          <div class="nav-label">Workspace</div>
+          <button class="nav-button" data-view="queue" aria-pressed="true">
+            <span class="nav-icon" aria-hidden="true">▤</span>Queue overview</button
+          ><button class="nav-button" data-view="activity" aria-pressed="false">
+            <span class="nav-icon" aria-hidden="true">◷</span>Weekly activity</button
+          ><button
+            class="nav-button"
+            data-view="inventory"
+            aria-pressed="false"
+          >
+            <span class="nav-icon" aria-hidden="true">▦</span>Inventory
+          </button>
+        </nav>
+        <div class="side-note">
+          <strong>Local operations lab</strong>Synthetic tickets and assets.<br />Python
+          · SQLite<br />No external services required.
+        </div>
+      </aside>
+      <main class="main">
+        <header class="header">
+          <div>
+            <div class="eyebrow">Service delivery / operations</div>
+            <h1 id="page-title">Queue overview</h1>
+            <p class="subtitle" id="page-subtitle">
+              A clear view of ownership, deadlines, and the next action.
+            </p>
+          </div>
+          <div class="header-actions">
+            <button class="button" id="print">Print report</button
+            ><button class="button primary" id="download">
+              Download summary <span aria-hidden="true">↓</span>
+            </button>
+          </div>
+        </header>
+        <div class="snapshot-bar">
+          <span class="snapshot-dot"></span
+          ><strong id="evaluation-time"></strong><span> · Local time</span
+          ><span class="snapshot-description">
+            · Read-only snapshot. Regenerate after updates.</span
+          >
+        </div>
+        <section
+          class="metrics"
+          aria-label="Current queue metrics"
+          id="metrics"
+        ></section>
+        <section class="view" id="view-queue" aria-label="Ticket queue">
+          <div class="workspace">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Service queue</h2>
+                <span class="count" id="result-count" aria-live="polite"></span>
+              </div>
+              <div class="filter-tabs" aria-label="Queue scope">
+                <button
+                  class="filter-tab active"
+                  data-scope="active"
+                  aria-pressed="true"
+                >
+                  All active</button
+                ><button
+                  class="filter-tab"
+                  data-scope="attention"
+                  aria-pressed="false"
+                >
+                  Needs attention</button
+                ><button
+                  class="filter-tab"
+                  data-scope="unassigned"
+                  aria-pressed="false"
+                >
+                  Unassigned</button
+                ><button
+                  class="filter-tab"
+                  data-scope="all"
+                  aria-pressed="false"
+                >
+                  All tickets
+                </button>
+              </div>
+              <div class="toolbar">
+                <label class="sr-only" for="search"
+                  >Search tickets, owners, or assets</label
+                ><input
+                  class="search"
+                  id="search"
+                  type="search"
+                  placeholder="Search tickets, owners, assets…"
+                /><label class="sr-only" for="priority">Priority</label
+                ><select class="select" id="priority">
+                  <option value="">All priorities</option>
+                  <option>P1</option>
+                  <option>P2</option>
+                  <option>P3</option>
+                  <option>P4</option></select
+                ><label class="sr-only" for="status">Status</label
+                ><select class="select" id="status">
+                  <option value="">All statuses</option>
+                  <option>Open</option>
+                  <option>In Progress</option>
+                  <option>Escalated</option>
+                  <option>Resolved</option>
+                  <option>Closed</option>
+                </select>
+              </div>
+              <table class="queue-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Ticket</th>
+                    <th scope="col">Priority</th>
+                    <th scope="col">SLA target</th>
+                    <th class="owner-column" scope="col">Owner</th>
+                  </tr>
+                </thead>
+                <tbody id="queue-body"></tbody>
+              </table>
+              <div class="panel-footer">
+                Sorted by SLA risk, then due time. Select a ticket to inspect
+                its history.
+              </div>
+            </section>
+            <aside
+              class="panel detail"
+              id="ticket-detail"
+              aria-label="Selected ticket"
+            ></aside>
+          </div>
+          <div class="summary-strip">
+            <span class="summary-icon" aria-hidden="true">ⓘ</span>
+            <div>
+              <h3 class="section-title">How to read this queue</h3>
+              <p>
+                SLA targets use elapsed hours: P1 · 1h, P2 · 4h, P3 · 24h, P4 ·
+                72h. Follow-ups are separate action deadlines. Queue status is
+                current; the evaluation clock does not reconstruct historical
+                ticket states.
+              </p>
+            </div>
+          </div>
+        </section>
+        <section
+          class="view"
+          id="view-activity"
+          hidden
+          aria-label="Weekly activity"
+        >
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Recorded activity</h2>
+              <span class="count">Last seven days</span>
+            </div>
+            <div class="panel-footer" id="activity-window"></div>
+            <div class="activity-grid" id="activity-counts"></div>
+            <table class="simple-table activity-table">
+              <thead>
+                <tr>
+                  <th scope="col">Time / ticket</th>
+                  <th scope="col">Event</th>
+                  <th scope="col">Detail</th>
+                </tr>
+              </thead>
+              <tbody id="activity-body"></tbody>
+            </table>
+            <div class="panel-footer">
+              Counts reflect events recorded in this window. Initially resolved
+              seed tickets have no resolution event.
+            </div>
+          </div>
+        </section>
+        <section class="view" id="view-inventory" hidden aria-label="Inventory">
+          <div class="inventory-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Asset register</h2>
+                <span class="count" id="asset-count"></span>
+              </div>
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Asset</th>
+                    <th scope="col">Platform</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Assignment</th>
+                  </tr>
+                </thead>
+                <tbody id="asset-body"></tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><h2>Software licences</h2></div>
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Product</th>
+                    <th scope="col">Assigned</th>
+                    <th scope="col">Available</th>
+                    <th scope="col">Renewal</th>
+                  </tr>
+                </thead>
+                <tbody id="license-body"></tbody>
+              </table>
+              <div class="panel-footer">
+                Seat availability is calculated from the current local records.
+              </div>
+            </div>
+          </div>
+        </section>
+        <footer class="footer">
+          <span>Helpdesk Operations Lab · Synthetic scenario</span
+          ><span>Portable report · All data stays in this file</span>
+        </footer>
+        <noscript
+          ><p>
+            This report needs JavaScript to display embedded records. Use the
+            CLI dashboard or Markdown summary if JavaScript is disabled.
+          </p></noscript
+        >
+      </main>
+    </div>
+    <script id="snapshot-data" type="application/json">
+      __SNAPSHOT_JSON__
+    </script>
+    <script>
+      "use strict";
+      const data = JSON.parse(
+        document.getElementById("snapshot-data").textContent,
+      );
+      const $ = (id) => document.getElementById(id);
+      const esc = (value) =>
+        String(value ?? "").replace(
+          /[&<>"']/g,
+          (ch) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[ch],
+        );
+      const stamp = (value) =>
+        value ? value.replace("T", " ").slice(0, 16) : "Not set";
+      const shortDate = (value) =>
+        value
+          ? value.slice(5, 10).replace("-", "/") + " · " + value.slice(11, 16)
+          : "—";
+      const active = (t) => !["Resolved", "Closed"].includes(t.status);
+      const attention = (t) =>
+        active(t) &&
+        (t.state !== "ON TRACK" ||
+          t.follow_up_state === "DUE" ||
+          !t.owner ||
+          t.escalation);
+      const stateClass = (state) =>
+        state === "OVERDUE" ? "red" : state === "AT RISK" ? "amber" : "green";
+      const stateLabel = (state) =>
+        ({
+          OVERDUE: "Overdue",
+          "AT RISK": "At risk",
+          "ON TRACK": "On track",
+          RESOLVED: "Complete",
+        })[state] || state;
+      let scope = "active",
+        selected = null;
+      $("evaluation-time").textContent = "Evaluated " + stamp(data.as_of);
+      const metrics = [
+        [
+          "Active tickets",
+          data.metrics.active_tickets,
+          "Open, in progress, or escalated",
+          "",
+        ],
+        [
+          "Overdue targets",
+          data.metrics.overdue_tickets,
+          "SLA target time reached",
+          "red",
+        ],
+        [
+          "Follow-ups due",
+          data.metrics.follow_ups_due,
+          "Action deadlines to review",
+          "amber",
+        ],
+        [
+          "Unassigned",
+          data.metrics.unassigned_tickets,
+          "Active tickets without an owner",
+          "",
+        ],
+      ];
+      $("metrics").innerHTML = metrics
+        .map(
+          ([label, value, help, color]) =>
+            `<div class="metric ${color}"><span class="metric-dot"></span><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-help">${help}</div></div>`,
+        )
+        .join("");
+      function filtered() {
+        const q = $("search").value.trim().toLowerCase();
+        return data.tickets
+          .filter(
+            (t) =>
+              (scope === "all" ||
+                (scope === "active" && active(t)) ||
+                (scope === "attention" && attention(t)) ||
+                (scope === "unassigned" && active(t) && !t.owner)) &&
+              (!$("priority").value || t.priority === $("priority").value) &&
+              (!$("status").value || t.status === $("status").value) &&
+              (!q ||
+                [
+                  t.ticket_id,
+                  t.summary,
+                  t.owner,
+                  t.category,
+                  t.asset_tag,
+                  t.follow_up_notes,
+                ]
+                  .join(" ")
+                  .toLowerCase()
+                  .includes(q)),
+          )
+          .sort(
+            (a, b) =>
+              ({ OVERDUE: 0, "AT RISK": 1, "ON TRACK": 2, RESOLVED: 3 })[
+                a.state
+              ] -
+                { OVERDUE: 0, "AT RISK": 1, "ON TRACK": 2, RESOLVED: 3 }[
+                  b.state
+                ] || (a.due_at || "").localeCompare(b.due_at || ""),
+          );
+      }
+      function renderQueue() {
+        const rows = filtered();
+        if (!rows.some((t) => t.ticket_id === selected))
+          selected = rows[0]?.ticket_id || null;
+        $("result-count").textContent =
+          `${rows.length} ticket${rows.length === 1 ? "" : "s"}`;
+        $("queue-body").innerHTML = rows.length
+          ? rows
+              .map(
+                (t) =>
+                  `<tr class="${t.ticket_id === selected ? "selected" : ""}"><td><button class="ticket-link" data-ticket="${esc(t.ticket_id)}" aria-pressed="${t.ticket_id === selected}"><span class="ticket-id">${esc(t.ticket_id)}</span>${esc(t.summary)}</button><span class="ticket-caption">${esc(t.category)} · ${esc(t.status)}</span></td><td><span class="priority">${esc(t.priority)}</span></td><td><span class="badge ${stateClass(t.state)}">${stateLabel(t.state)}</span><span class="ticket-caption">${shortDate(t.due_at)}</span></td><td class="owner-column"><span class="owner-line ${t.owner ? "" : "quiet"}">${esc(t.owner || "Unassigned")}</span>${t.follow_up_state === "DUE" ? '<span class="ticket-caption" style="color:var(--amber)">Follow-up due</span>' : ""}</td></tr>`,
+              )
+              .join("")
+          : '<tr><td colspan="4"><div class="empty">No tickets match these filters.<br>Try a different search or queue view.</div></td></tr>';
+        document.querySelectorAll("[data-ticket]").forEach((button) =>
+          button.addEventListener("click", () => {
+            selected = button.dataset.ticket;
+            renderQueue();
+            document
+              .querySelector(`[data-ticket="${CSS.escape(selected)}"]`)
+              ?.focus();
+          }),
+        );
+        renderDetail();
+      }
+      function renderDetail() {
+        const t = data.tickets.find((t) => t.ticket_id === selected);
+        if (!t) {
+          $("ticket-detail").innerHTML =
+            '<div class="empty">Select a ticket from the queue to view its details.</div>';
+          return;
+        }
+        const events = data.events.filter((e) => e.ticket_id === t.ticket_id);
+        const asset = data.assets.find((a) => a.asset_tag === t.asset_tag);
+        const fields = [
+          ["Owner", t.owner || "Unassigned"],
+          ["Status", t.status],
+          ["Opened", stamp(t.opened_at)],
+          ["SLA target", t.due_at ? stamp(t.due_at) : "Complete"],
+          ["Linked asset", t.asset_tag || "None"],
+          ["Impact / urgency", t.impact + " / " + t.urgency],
+        ];
+        $("ticket-detail").innerHTML =
+          `<div class="detail-top"><span class="detail-id">${esc(t.ticket_id)} / ${esc(t.category)}</span><span class="badge ${t.priority === "P1" ? "red" : ""}">${esc(t.priority)}</span></div><h2>${esc(t.summary)}</h2><div class="detail-grid">${fields.map(([label, value]) => `<div><span class="field-label">${label}</span><span class="field-value">${esc(value)}</span></div>`).join("")}</div>${asset ? `<p class="ticket-caption">${esc(asset.asset_type)} · ${esc(asset.platform)} · ${esc(asset.assignment)}</p>` : ""}<div class="detail-section"><h3 class="section-title">${active(t) ? "Next action" : "Resolution"}</h3><div class="action-card ${t.follow_up_state === "DUE" ? "attention" : ""}"><span class="action-date">${active(t) ? (t.follow_up_due_at ? `${t.follow_up_state === "DUE" ? "Follow-up due" : "Scheduled"} · ${stamp(t.follow_up_due_at)}` : "No follow-up scheduled") : "Recorded outcome"}</span><p>${esc(active(t) ? t.follow_up_notes || "Assign an owner and record the next action with a follow-up time." : t.resolution_notes || "Initially resolved scenario; no resolution note was recorded.")}</p></div>${t.escalation ? `<p class="escalation">Review trigger: ${esc(t.escalation.toLowerCase())}. Confirm the responsible owner.</p>` : ""}</div><div class="detail-section"><h3 class="section-title">Ticket history · ${events.length} event${events.length === 1 ? "" : "s"}</h3><ol class="timeline">${events.map((e) => `<li><div class="event-heading">${esc(e.event_type[0] + e.event_type.slice(1).toLowerCase())}</div><div class="event-time">${stamp(e.created_at)}</div><div class="event-detail">${esc(e.details)}</div></li>`).join("") || "<li>No recorded events.</li>"}</ol></div><button class="button detail-action" id="copy-ticket">Copy ticket summary</button><div id="notification" role="status" aria-live="polite"></div>`;
+        $("copy-ticket").addEventListener("click", () => copyTicket(t));
+      }
+      async function copyTicket(t) {
+        const lines = [
+          `${t.ticket_id} — ${t.summary}`,
+          `${t.priority} · ${t.status} · Owner: ${t.owner || "Unassigned"}`,
+          `SLA: ${stateLabel(t.state)}${t.due_at ? " · " + stamp(t.due_at) : ""}`,
+        ];
+        if (active(t)) {
+          lines.push(
+            `Next action: ${t.follow_up_notes || "Not recorded"}`,
+            `Follow-up: ${stamp(t.follow_up_due_at)}`,
+          );
+        } else {
+          lines.push(
+            `Resolution: ${t.resolution_notes || "Initially resolved scenario; no resolution note recorded."}`,
+          );
+        }
+        const text = lines.join("\n");
+        try {
+          await navigator.clipboard.writeText(text);
+          $("notification").textContent = "Ticket summary copied.";
+        } catch {
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+          textArea.style.cssText = "position:fixed;left:-9999px";
+          document.body.append(textArea);
+          textArea.select();
+          const copied = document.execCommand("copy");
+          textArea.remove();
+          $("copy-ticket").focus();
+          $("notification").textContent = copied
+            ? "Ticket summary copied."
+            : "Copy unavailable. Select the ticket text to copy it.";
+        }
+      }
+      function selectScope(nextScope) {
+        scope = nextScope;
+        if (
+          scope !== "all" &&
+          ["Resolved", "Closed"].includes($("status").value)
+        )
+          $("status").value = "";
+        document.querySelectorAll("[data-scope]").forEach((button) => {
+          const selected = button.dataset.scope === scope;
+          button.classList.toggle("active", selected);
+          button.setAttribute("aria-pressed", selected);
+        });
+        renderQueue();
+      }
+      for (const id of ["search", "priority"])
+        $(id).addEventListener(
+          id === "search" ? "input" : "change",
+          renderQueue,
+        );
+      $("status").addEventListener("change", () => {
+        if (["Resolved", "Closed"].includes($("status").value))
+          selectScope("all");
+        else renderQueue();
+      });
+      document
+        .querySelectorAll("[data-scope]")
+        .forEach((button) =>
+          button.addEventListener("click", () =>
+            selectScope(button.dataset.scope),
+          ),
+        );
+      const titles = {
+        queue: [
+          "Queue overview",
+          "A clear view of ownership, deadlines, and the next action.",
+        ],
+        activity: [
+          "Weekly activity",
+          "Recorded progress, updates, and handover notes.",
+        ],
+        inventory: [
+          "Inventory",
+          "Assets and software seats behind the service queue.",
+        ],
+      };
+      document.querySelectorAll("[data-view]").forEach((button) =>
+        button.addEventListener("click", () => {
+          const view = button.dataset.view;
+          document
+            .querySelectorAll("[data-view]")
+            .forEach((b) => b.setAttribute("aria-pressed", b === button));
+          document
+            .querySelectorAll(".view")
+            .forEach(
+              (section) => (section.hidden = section.id !== "view-" + view),
+            );
+          $("page-title").textContent = titles[view][0];
+          $("page-subtitle").textContent = titles[view][1];
+        }),
+      );
+      $("activity-window").textContent =
+        `After ${stamp(data.window_start)} through ${stamp(data.as_of)} · Local lab time`;
+      $("activity-counts").innerHTML = Object.entries(data.activity_counts)
+        .map(
+          ([kind, count]) =>
+            `<div class="activity-card"><strong>${count}</strong><span>${kind === "NOTE" ? "Progress notes" : kind[0] + kind.slice(1).toLowerCase()}</span></div>`,
+        )
+        .join("");
+      $("activity-body").innerHTML =
+        data.activity
+          .map(
+            (e) =>
+              `<tr><td>${stamp(e.created_at)}<br><span class="quiet">${esc(e.ticket_id)}</span></td><td><span class="badge">${esc(e.event_type)}</span></td><td>${esc(e.details)}</td></tr>`,
+          )
+          .join("") ||
+        '<tr><td colspan="3" class="empty">No recorded activity in this window.</td></tr>';
+      $("asset-count").textContent = data.assets.length + " assets";
+      $("asset-body").innerHTML = data.assets
+        .map(
+          (a) =>
+            `<tr><td>${esc(a.asset_tag)}<br><span class="quiet">${esc(a.asset_type)}</span></td><td>${esc(a.platform)}</td><td><span class="badge ${a.status === "Repair" ? "amber" : ""}">${esc(a.status)}</span></td><td>${esc(a.assignment)}</td></tr>`,
+        )
+        .join("");
+      $("license-body").innerHTML = data.licenses
+        .map(
+          (l) =>
+            `<tr><td>${esc(l.product)}</td><td>${l.seats_assigned} / ${l.seats_owned}</td><td>${l.seats_owned - l.seats_assigned}</td><td>${esc(l.renewal_date)}</td></tr>`,
+        )
+        .join("");
+      $("download").addEventListener("click", () => {
+        const blob = new Blob([data.weekly_markdown], {
+          type: "text/markdown;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "weekly-operations-summary.md";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+      $("print").addEventListener("click", () => window.print());
+      renderQueue();
+    </script>
+  </body>
+</html>

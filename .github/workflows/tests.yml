@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,4 +23,10 @@ jobs:
         run: |
           python helpdesk_lab.py init --reset
           python helpdesk_lab.py dashboard --as-of 2026-08-14T16:00:00
-          python helpdesk_lab.py metrics
+          python helpdesk_lab.py metrics --as-of 2026-08-14T16:00:00
+          python helpdesk_lab.py report --as-of 2026-08-14T16:00:00
+          python helpdesk_lab.py weekly --as-of 2026-08-14T16:00:00
+      - name: Verify reproducible examples
+        run: |
+          python scripts/build_demo.py
+          git diff --exit-code -- docs/demo-dashboard.html docs/demo-weekly-summary.md
